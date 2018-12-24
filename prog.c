@@ -66,6 +66,48 @@
 #define HSI_HZ 16000000U
 #define PCLK1_HZ HSI_HZ
 
+
+/*
+	LED HANDLERS BEGIN
+*/
+
+#define RED_LED_GPIO    GPIOA
+#define GREEN_LED_GPIO  GPIOA
+#define RED_LED_PIN    6
+#define GREEN_LED_PIN  7
+
+#define RedLEDon() \
+	RED_LED_GPIO->BSRRH = 1 << RED_LED_PIN
+#define RedLEDoff() \
+	RED_LED_GPIO->BSRRL = 1 << RED_LED_PIN
+
+#define GreenLEDon() \
+	GREEN_LED_GPIO->BSRRH = 1 << GREEN_LED_PIN
+#define GreenLEDoff() \
+	GREEN_LED_GPIO->BSRRL = 1 << GREEN_LED_PIN
+
+void init_leds() {
+		__NOP();
+	RedLEDoff();
+	GreenLEDoff();
+	
+	GPIOoutConfigure(RED_LED_GPIO,
+					 RED_LED_PIN,
+					 GPIO_OType_PP,
+					 GPIO_Low_Speed,
+					 GPIO_PuPd_NOPULL);
+
+	GPIOoutConfigure(GREEN_LED_GPIO,
+					 GREEN_LED_PIN,
+					 GPIO_OType_PP,
+					 GPIO_Low_Speed,
+					 GPIO_PuPd_NOPULL);
+}
+
+/*
+	LED HANDLERS END
+*/
+
 typedef struct {
     GPIO_TypeDef* gpio;
     uint8_t pin;
@@ -88,6 +130,7 @@ button_t user = {.pin = {.gpio = USER_BUTTON_GPIO, .pin = USER_BUTTON_PIN }, .st
 size_t output_buffer_length = 0;
 size_t write_length = 0;
 char output_buffer[MAX_BUFFER_SIZE];
+char input_buffer[5];
 
 void button_init(button_t button) {
 	GPIOinConfigure(button.pin.gpio, button.pin.pin, GPIO_PuPd_UP, EXTI_Mode_Interrupt, EXTI_Trigger_Rising_Falling);
@@ -112,12 +155,17 @@ uint8_t is_dma_free() {
 void dma_init() {
 	DMA1_Stream6->CR = 4U << 25 | DMA_SxCR_PL_1 | DMA_SxCR_MINC | DMA_SxCR_DIR_0 | DMA_SxCR_TCIE;
 	DMA1_Stream6->PAR = (uint32_t)&USART2->DR;
-	DMA1->HIFCR = DMA_HIFCR_CTCIF6;
+	
+	DMA1_Stream5->CR = 4U << 25 | DMA_SxCR_PL_1 | DMA_SxCR_MINC | DMA_SxCR_TCIE;
+	DMA1_Stream5->PAR = (uint32_t)&USART2->DR;
+	
+	DMA1->HIFCR = DMA_HIFCR_CTCIF6 | DMA_HIFCR_CTCIF5;
 
 	NVIC_EnableIRQ(DMA1_Stream6_IRQn);
+	NVIC_EnableIRQ(DMA1_Stream5_IRQn);
 }
 
-void dma_send(size_t len) {
+void dma_send(size_t len) {	
 	DMA1_Stream6->M0AR = (uint32_t)(output_buffer + write_length);
 	DMA1_Stream6->NDTR = len;
 	DMA1_Stream6->CR |= DMA_SxCR_EN;
@@ -239,6 +287,31 @@ void DMA1_Stream6_IRQHandler() {
 	}
 }
 
+
+void dma_receive() {
+	GreenLEDon();
+	if (input_buffer[0] == '1')
+		GreenLEDon();
+	else if (input_buffer[0] == '2')
+		GreenLEDoff();
+	else if (input_buffer[0] == '3')
+		RedLEDon();
+	else if (input_buffer[0] == '4')
+		RedLEDoff();
+	DMA1_Stream5->M0AR = (uint32_t)input_buffer;
+	DMA1_Stream5->NDTR = 1;
+	DMA1_Stream5->CR |= DMA_SxCR_EN;
+}
+
+void DMA1_Stream5_IRQHandler() {
+	/* Odczytaj zgłoszone przerwania DMA1. */
+	uint32_t isr = DMA1->HISR;
+	if (isr & DMA_HISR_TCIF5) {
+		dma_receive();
+		DMA1->HIFCR = DMA_HIFCR_CTCIF5;
+	}
+}
+
 void buttons_init() {
 	button_init(fire);
 	button_init(up);
@@ -261,7 +334,13 @@ int main() {
 	usart2_init();
 	dma_init();
 
+	init_leds();
+
 	usart2_enable();
+
+	DMA1_Stream5->M0AR = (uint32_t)input_buffer;
+	DMA1_Stream5->NDTR = 1;
+	DMA1_Stream5->CR |= DMA_SxCR_EN;
 
 	while(1) {}
 	return 0;
