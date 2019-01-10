@@ -1,5 +1,4 @@
 #include "queue.h"
-#include <stdint.h>
 
 void init_queue(Queue *q) {
 	q->begin = q->end = 0;

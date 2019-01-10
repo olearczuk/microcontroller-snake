@@ -110,7 +110,7 @@ void send_usart(char *message) {
 
 void init_usart() {
 	configure_usart();
-	init_ll();
+	init_dma();
 	enable_usart();
 	init_queue(&queue);
 	recv_dma();
