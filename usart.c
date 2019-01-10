@@ -16,8 +16,8 @@
 #define PCLK1_HZ HSI_HZ
 
 #define USART_GPIO GPIOA
-#define TXD_PIN 2
-#define RXD_PIN 3
+#define USART1_TXD_PIN 9
+#define USART1_RXD_PIN 10
 
 #define OUTPUT_BUFFER_SIZE 100
 #define INPUT_BUFFER_SIZE 1
@@ -27,14 +27,14 @@ char input_buffer[INPUT_BUFFER_SIZE];
 Queue queue;
 
 static void turn_clock_on_usart() {
-	RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN |RCC_AHB1ENR_DMA1EN;
+	RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN |RCC_AHB1ENR_DMA2EN;
 	RCC->APB1ENR |= RCC_APB1ENR_USART2EN;
 }
 
 static void configure_gpio_usart() {
-	GPIOafConfigure(GPIOA, TXD_PIN, GPIO_OType_PP, GPIO_Fast_Speed,
+	GPIOafConfigure(GPIOA, USART1_TXD_PIN, GPIO_OType_PP, GPIO_Fast_Speed,
 					GPIO_PuPd_NOPULL, GPIO_AF_USART2);
-	GPIOafConfigure(GPIOA, RXD_PIN, GPIO_OType_PP, GPIO_Fast_Speed, 
+	GPIOafConfigure(GPIOA, USART1_RXD_PIN, GPIO_OType_PP, GPIO_Fast_Speed, 
 					GPIO_PuPd_UP, GPIO_AF_USART2);
 }
 
@@ -58,18 +58,18 @@ static void configure_usart() {
 // }
 
 static void set_dma_streams() {
-	DMA1_Stream6->CR = 4U << 25 | DMA_SxCR_PL_1 | DMA_SxCR_MINC | 
+	DMA2_Stream7->CR = 4U << 25 | DMA_SxCR_PL_1 | DMA_SxCR_MINC | 
 					   DMA_SxCR_DIR_0 | DMA_SxCR_TCIE;
-    DMA1_Stream6->PAR = (uint32_t)&USART2->DR;
+    DMA2_Stream7->PAR = (uint32_t)&USART2->DR;
 
-    DMA1_Stream5->CR = 4U << 25 | DMA_SxCR_PL_1 | DMA_SxCR_MINC | DMA_SxCR_TCIE;
-    DMA1_Stream5->PAR = (uint32_t)&USART2->DR;
+    DMA2_Stream5->CR = 4U << 25 | DMA_SxCR_PL_1 | DMA_SxCR_MINC | DMA_SxCR_TCIE;
+    DMA2_Stream5->PAR = (uint32_t)&USART2->DR;
 }
 
 static void init_dma_interrupt() {
-	DMA1->HIFCR = DMA_HIFCR_CTCIF6 | DMA_HIFCR_CTCIF5;
-	NVIC_EnableIRQ(DMA1_Stream6_IRQn);
-	NVIC_EnableIRQ(DMA1_Stream5_IRQn);
+	DMA2->HIFCR = DMA_HIFCR_CTCIF6 | DMA_HIFCR_CTCIF5;
+	NVIC_EnableIRQ(DMA2_Stream6_IRQn);
+	NVIC_EnableIRQ(DMA2_Stream5_IRQn);
 
 }
 
@@ -86,19 +86,19 @@ static void enable_usart() {
 
 
 static int is_dma_busy() {
-	return DMA1_Stream6->CR & DMA_SxCR_EN;
+	return DMA2_Stream6->CR & DMA_SxCR_EN;
 }
 
 static void send_dma(char *message, uint32_t len) {
-	DMA1_Stream6->M0AR = (uint32_t) message;
-	DMA1_Stream6->NDTR = len;
-	DMA1_Stream6->CR |= DMA_SxCR_EN;
+	DMA2_Stream7->M0AR = (uint32_t) message;
+	DMA2_Stream7->NDTR = len;
+	DMA2_Stream7->CR |= DMA_SxCR_EN;
 }
 
 static void recv_dma() {
-	DMA1_Stream5->M0AR = (uint32_t)input_buffer;
-	DMA1_Stream5->NDTR = INPUT_BUFFER_SIZE;
-	DMA1_Stream5->CR |= DMA_SxCR_EN;
+	DMA2_Stream5->M0AR = (uint32_t)input_buffer;
+	DMA2_Stream5->NDTR = INPUT_BUFFER_SIZE;
+	DMA2_Stream5->CR |= DMA_SxCR_EN;
 }
 
 void send_usart(char *message) {
@@ -110,17 +110,17 @@ void send_usart(char *message) {
 
 void init_usart() {
 	configure_usart();
-	init_dma();
+	init_ll();
 	enable_usart();
 	init_queue(&queue);
 	recv_dma();
 }
 
-void DMA1_Stream6_IRQHandler() {
-	uint32_t isr = DMA1->HISR;
+void DMA2_Stream6_IRQHandler() {
+	uint32_t isr = DMA2->HISR;
 	
 	if (isr & DMA_HISR_TCIF6) {
-		DMA1->HIFCR = DMA_HIFCR_CTCIF6;
+		DMA2->HIFCR = DMA_HIFCR_CTCIF6;
 		
 		if (!queue_is_empty(&queue)) {
 			uint32_t len = queue_get(&queue, output_buffer, OUTPUT_BUFFER_SIZE);
@@ -130,11 +130,11 @@ void DMA1_Stream6_IRQHandler() {
 }
 
 
-void DMA1_Stream5_IRQHandler() {
-	/* Odczytaj zgłoszone przerwania DMA1. */
-	uint32_t isr = DMA1->HISR;
+void DMA2_Stream5_IRQHandler() {
+	/* Odczytaj zgłoszone przerwania DMA2. */
+	uint32_t isr = DMA2->HISR;
 	if (isr & DMA_HISR_TCIF5) {
-		DMA1->HIFCR = DMA_HIFCR_CTCIF5;
+		DMA2->HIFCR = DMA_HIFCR_CTCIF5;
 
 		parse_led(input_buffer);
 		recv_dma();
