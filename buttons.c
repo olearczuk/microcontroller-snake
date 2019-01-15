@@ -4,6 +4,7 @@
 #include "usart.h"
 #include "buttons.h"
 #include "leds.h"
+#include "timers.h"
 
 #define JOYSTICK_GPIO GPIOB
 
@@ -31,13 +32,14 @@ typedef struct {
 typedef struct {
 	pin_t pin;
 	uint8_t state;
-	uint8_t pressed;
+	uint8_t is_waiting;
+	char *message;
 } button_t;
 
-button_t up = {.pin = {.gpio = JOYSTICK_GPIO, .pin = UP_BUTTON_PIN }, .state = HIGH_STATE, .pressed = 0 };
-button_t right = {.pin = {.gpio = JOYSTICK_GPIO, .pin = RIGHT_BUTTON_PIN }, .state = HIGH_STATE, .pressed = 0 };
-button_t down = {.pin = {.gpio = JOYSTICK_GPIO, .pin = DOWN_BUTTON_PIN }, .state = HIGH_STATE, .pressed = 0 };
-button_t left = {.pin = {.gpio = JOYSTICK_GPIO, .pin = LEFT_BUTTON_PIN }, .state = HIGH_STATE, .pressed = 0 };
+button_t up = {.pin = {.gpio = JOYSTICK_GPIO, .pin = UP_BUTTON_PIN }, .state = HIGH_STATE, .is_waiting = 0, .message = UP_PRESSED };
+button_t right = {.pin = {.gpio = JOYSTICK_GPIO, .pin = RIGHT_BUTTON_PIN }, .state = HIGH_STATE, .is_waiting = 0, .message = RIGHT_PRESSED };
+button_t down = {.pin = {.gpio = JOYSTICK_GPIO, .pin = DOWN_BUTTON_PIN }, .state = HIGH_STATE, .is_waiting = 0, .message = DOWN_PRESSED };
+button_t left = {.pin = {.gpio = JOYSTICK_GPIO, .pin = LEFT_BUTTON_PIN }, .state = HIGH_STATE, .is_waiting = 0, .message = LEFT_PRESSED };
 
 static void init_button(button_t button) {
 	GPIOinConfigure(button.pin.gpio, button.pin.pin, GPIO_PuPd_UP, EXTI_Mode_Interrupt, EXTI_Trigger_Rising_Falling);
@@ -61,43 +63,52 @@ static uint8_t pin_test_set_input(pin_t pin) {
 	return (pin.gpio->IDR & (1 << pin.pin)) != 0;
 }
 
-static uint8_t is_button_pressed(button_t button) {
-	if (button.state == LOW_STATE) {
-		return pin_test_set_input(button.pin);
+static uint8_t is_button_pressed(button_t* button) {
+	if (button->state == LOW_STATE) {
+		return pin_test_set_input(button->pin);
 	} else {
-		return !pin_test_set_input(button.pin);
+		return !pin_test_set_input(button->pin);
 	}
 }
 
-static void process_one_button(button_t *button, char *message) {
-	uint8_t is_pressed = is_button_pressed(*button);
-	if (is_pressed != button->pressed) {
-		button->pressed = is_pressed;
+static void handle_click(button_t *button) {
+	button->is_waiting = 1;
+	start_timer();
+}
 
-		if (is_pressed) {
-			send_usart(message);
-		}
+static void handle_interrupt(button_t *button) {
+	if (button->is_waiting) {
+		if (is_button_pressed(button))
+			send_usart(button->message);
+		button->is_waiting = 0;
 	}
+}
+
+void check_buttons() {
+	handle_interrupt(&up);
+	handle_interrupt(&right);
+	handle_interrupt(&down);
+	handle_interrupt(&left);
 }
 
 void EXTI9_5_IRQHandler(void) {
 	if (EXTI->PR & EXTI_PR_PR6) {
 		EXTI->PR = EXTI_PR_PR6;
-		process_one_button(&down, DOWN_PRESSED);
+		handle_click(&down);
 	}
 
 	if (EXTI->PR & EXTI_PR_PR5) {
 		EXTI->PR = EXTI_PR_PR5;
-		process_one_button(&up, UP_PRESSED);
+		handle_click(&up);
 	}
 }
 
 void EXTI4_IRQHandler(void) {
 	EXTI->PR = EXTI_PR_PR4;
-	process_one_button(&right, RIGHT_PRESSED);
+	handle_click(&right);
 }
 
 void EXTI3_IRQHandler(void) {
 	EXTI->PR = EXTI_PR_PR3;
-	process_one_button(&left, LEFT_PRESSED);
+	handle_click(&left);
 }
