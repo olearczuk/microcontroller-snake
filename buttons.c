@@ -44,6 +44,9 @@ static void init_button(button_t button) {
 }
 
 void init_buttons() {
+	RCC->AHB1ENR |= RCC_AHB1ENR_GPIOBEN;
+	RCC->APB2ENR |= RCC_APB2ENR_SYSCFGEN;
+
 	init_button(up);
 	init_button(right);
 	init_button(down);
@@ -70,7 +73,7 @@ static void process_one_button(button_t *button, char *message) {
 	uint8_t is_pressed = is_button_pressed(*button);
 	if (is_pressed != button->pressed) {
 		button->pressed = is_pressed;
-		
+
 		if (is_pressed) {
 			send_usart(message);
 		}

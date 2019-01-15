@@ -16,14 +16,14 @@
 
 
 void init_leds() {
-		__NOP();
-	RedLEDoff();
+	RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
 	
 	GPIOoutConfigure(RED_LED_GPIO,
 					 RED_LED_PIN,
 					 GPIO_OType_PP,
 					 GPIO_Low_Speed,
 					 GPIO_PuPd_NOPULL);
+	RedLEDoff();
 }
 
 void parse_led(char *message) {

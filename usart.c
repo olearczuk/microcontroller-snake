@@ -10,7 +10,7 @@
 #define USART_Parity_No 0x0000
 #define USART_WordLength_8b 0x0000
 #define USART_Enable USART_CR1_UE
-#define USART_Mode_Rx_Tx USART_CR1_RE | USART_CR1_TE
+#define USART_Mode_Rx_Tx (USART_CR1_RE | USART_CR1_TE)
 
 #define HSI_HZ 16000000U
 #define PCLK1_HZ HSI_HZ
@@ -27,23 +27,23 @@ char input_buffer[INPUT_BUFFER_SIZE];
 Queue queue;
 
 static void turn_clock_on_usart() {
-	RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN |RCC_AHB1ENR_DMA2EN;
-	RCC->APB1ENR |= RCC_APB1ENR_USART2EN;
+	RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+	RCC->APB2ENR |= RCC_APB2ENR_USART1EN;
 }
 
 static void configure_gpio_usart() {
-	GPIOafConfigure(GPIOA, USART1_TXD_PIN, GPIO_OType_PP, GPIO_Fast_Speed,
-					GPIO_PuPd_NOPULL, GPIO_AF_USART2);
-	GPIOafConfigure(GPIOA, USART1_RXD_PIN, GPIO_OType_PP, GPIO_Fast_Speed, 
-					GPIO_PuPd_UP, GPIO_AF_USART2);
+	GPIOafConfigure(USART_GPIO, USART1_TXD_PIN, GPIO_OType_PP, GPIO_Fast_Speed,
+					GPIO_PuPd_NOPULL, GPIO_AF_USART1);
+	GPIOafConfigure(USART_GPIO, USART1_RXD_PIN, GPIO_OType_PP, GPIO_Fast_Speed, 
+					GPIO_PuPd_UP, GPIO_AF_USART1);
 }
 
 static void set_registers_usart() {
 	uint32_t const baudrate = 9600U;
-	USART2->CR1 = USART_CR1_RE | USART_CR1_TE;
-	USART2->CR2 = USART_StopBits_1;
-	USART2->BRR = (PCLK1_HZ + (baudrate / 2U)) / baudrate;
-	USART2->CR3 = USART_CR3_DMAT | USART_CR3_DMAR;
+	USART1->CR1 = USART_Mode_Rx_Tx | USART_WordLength_8b | USART_Parity_No;
+	USART1->CR2 = USART_StopBits_1;
+	USART1->BRR = (PCLK1_HZ + (baudrate / 2U)) / baudrate;
+	USART1->CR3 = USART_CR3_DMAT | USART_CR3_DMAR;
 }
 
 static void configure_usart() {
@@ -52,41 +52,38 @@ static void configure_usart() {
 	set_registers_usart();
 }
 
-// Check if really needed later on
-// static void turn_clock_on_dma() {
-// 	RCC-> |= RCC_AHB1ENR_DMA2EN
-// }
+static void turn_clock_on_dma() {
+	RCC->AHB1ENR |= RCC_AHB1ENR_DMA2EN;
+}
 
 static void set_dma_streams() {
 	DMA2_Stream7->CR = 4U << 25 | DMA_SxCR_PL_1 | DMA_SxCR_MINC | 
 					   DMA_SxCR_DIR_0 | DMA_SxCR_TCIE;
-    DMA2_Stream7->PAR = (uint32_t)&USART2->DR;
+    DMA2_Stream7->PAR = (uint32_t)&USART1->DR;
 
     DMA2_Stream5->CR = 4U << 25 | DMA_SxCR_PL_1 | DMA_SxCR_MINC | DMA_SxCR_TCIE;
-    DMA2_Stream5->PAR = (uint32_t)&USART2->DR;
+    DMA2_Stream5->PAR = (uint32_t)&USART1->DR;
 }
 
 static void init_dma_interrupt() {
-	DMA2->HIFCR = DMA_HIFCR_CTCIF6 | DMA_HIFCR_CTCIF5;
-	NVIC_EnableIRQ(DMA2_Stream6_IRQn);
+	DMA2->HIFCR = DMA_HIFCR_CTCIF7 | DMA_HIFCR_CTCIF5;
+	NVIC_EnableIRQ(DMA2_Stream7_IRQn);
 	NVIC_EnableIRQ(DMA2_Stream5_IRQn);
 
 }
 
 static void init_dma() {
-	// turn_clock_on_dma();
+	turn_clock_on_dma();
 	set_dma_streams();
 	init_dma_interrupt();
 }
 
 static void enable_usart() {
-	USART2->CR1 |= USART_Enable;
+	USART1->CR1 |= USART_Enable;
 }
 
-
-
 static int is_dma_busy() {
-	return DMA2_Stream6->CR & DMA_SxCR_EN;
+	return DMA2_Stream7->CR & DMA_SxCR_EN;
 }
 
 static void send_dma(char *message, uint32_t len) {
@@ -116,11 +113,11 @@ void init_usart() {
 	recv_dma();
 }
 
-void DMA2_Stream6_IRQHandler() {
+void DMA2_Stream7_IRQHandler() {
 	uint32_t isr = DMA2->HISR;
 	
-	if (isr & DMA_HISR_TCIF6) {
-		DMA2->HIFCR = DMA_HIFCR_CTCIF6;
+	if (isr & DMA_HISR_TCIF7) {
+		DMA2->HIFCR = DMA_HIFCR_CTCIF7;
 		
 		if (!queue_is_empty(&queue)) {
 			uint32_t len = queue_get(&queue, output_buffer, OUTPUT_BUFFER_SIZE);
@@ -131,8 +128,8 @@ void DMA2_Stream6_IRQHandler() {
 
 
 void DMA2_Stream5_IRQHandler() {
-	/* Odczytaj zgłoszone przerwania DMA2. */
 	uint32_t isr = DMA2->HISR;
+
 	if (isr & DMA_HISR_TCIF5) {
 		DMA2->HIFCR = DMA_HIFCR_CTCIF5;
 
