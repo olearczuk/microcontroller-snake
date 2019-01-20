@@ -98,19 +98,19 @@ static void recv_dma() {
 	DMA2_Stream5->CR |= DMA_SxCR_EN;
 }
 
-void send_usart(char *message) {
-	if (is_dma_busy())
-		queue_put(&queue, message);
-	else
-		send_dma(message, strlen(message));
-}
-
 void init_usart() {
 	configure_usart();
 	init_dma();
 	enable_usart();
 	init_queue(&queue);
 	recv_dma();
+}
+
+void send_usart(char *message) {
+	if (is_dma_busy())
+		queue_put(&queue, message);
+	else
+		send_dma(message, strlen(message));
 }
 
 void DMA2_Stream7_IRQHandler() {

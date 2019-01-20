@@ -14,11 +14,8 @@
 #define DOWN_BUTTON_PIN 6
 
 #define	UP_PRESSED "U"
-
 #define	RIGHT_PRESSED "R"
-
 #define	DOWN_PRESSED "D"
-
 #define	LEFT_PRESSED "L"
 
 #define LOW_STATE 1
